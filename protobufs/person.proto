@@ -1,0 +1,15 @@
+package person;
+// Person
+//
+// Represents a person. Most commonly used for maintainer and uploader fields,
+// but extendable for use in other places.
+// Note that for the purposes of debalot, groups (e.g. "Debalot Maintainers")
+// are considered to be a Person.
+
+message Person {
+    required string alias = 1; // E.g. "Home self" or "Work self"
+    required string name = 2;
+    required string email = 3;
+
+    // TODO: Do we want to add PGP keys (or at least signatures) here?
+}
