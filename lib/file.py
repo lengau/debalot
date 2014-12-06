@@ -1,4 +1,20 @@
-﻿"""Class definitions for types of file."""
+﻿"""File interaction libraries."""
+
+
+def next_nonempty_line(file):
+    """Returns the next non-empty line of a file.
+
+    Args:
+        file: A file object from which to read lines.
+    Returns:
+        A string containing the next non-whitespace line of the file or None.
+    """
+    line = file.readline()
+    while line.isspace() or len(line) <= 1:
+        if line == '':
+            return None
+        line = file.readline()
+    return line
 
 
 class File:

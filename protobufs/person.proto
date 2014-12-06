@@ -7,7 +7,7 @@ package person;
 // are considered to be a Person.
 
 message Person {
-    required string alias = 1; // E.g. "Home self" or "Work self"
+    optional string alias = 1; // E.g. "Home self" or "Work self"
     required string name = 2;
     required string email = 3;
 

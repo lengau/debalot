@@ -25,15 +25,34 @@ message Relation {
         STRICTLY_LATER = 4;
     }
     optional Relationship relationship = 3;
-
-    // If the package we depend on (or are otherwise related to) is part of our
-    // package structure, we should reference it directly.
-    optional BinaryPackage related_pkg = 4;
 }
 
 message Field {
     required string key = 1;
     required string value = 2;
+}
+
+enum Urgency {
+    LOW = 0;
+    MEDIUM = 1;
+    HIGH = 2;
+    EMERGENCY = 3;
+    CRITICAL = 4;
+}
+
+message Change {
+    // Each Change object represents an entry in a Changelog file.
+
+    // name is useful if the source package's name changes. If name is empty
+    // or doesn't exist, the package's name will be used.
+    optional string name = 1;
+    required string version = 2;
+    repeated string distribution = 3;
+    required Urgency urgency = 4;
+    optional string urgency_commentary = 5;
+    repeated string entries = 6;
+    optional person.Person maintainer = 7;
+    optional uint64 timestamp = 8;
 }
 
 message SourcePackage {
@@ -57,6 +76,10 @@ message SourcePackage {
     optional StandardsVersion standards_version = 9;
     optional string homepage = 10;
 
+    repeated Change changelog = 11;
+
+    repeated BinaryPackage binary_packages = 12;
+
     // Version Control System fields. Vcs-Browser is as defined in the Debian
     // Policy Manual. vcs is a generic Field that allows flexibility in version
     // control systems. The key is expected to be only the name of the VCS,
@@ -65,6 +88,23 @@ message SourcePackage {
     // 'git://anonscm.debian.org/dpkg/dpkg.git'.
     optional string vcs_browser = 17; // Vcs-Browser
     repeated Field vcs = 18;
+
+    // We need the name of the original tarball to open and modify the file.
+    // Any library using this protobuf should end up making the tarball name
+    // "{name}_{version}.orig.tar.{compression-type}", but we should allow
+    // different tarball names.
+    optional string original_tarball_name = 13;
+    // Occasionally we might want to manage the package as a single file.
+    // When we do so, we need a spot for the original tarball.
+    optional bytes original_tarball = 19;
+
+    // When we're placing everything in a single file, there may be
+    // miscellaneous files that we want to include and later extract.
+    message MiscFile {
+        required string name = 1;
+        required bytes contents = 2;
+    }
+    repeated MiscFile misc_files = 20;
 
 
     // additional_fields are used for items that are one-off use cases, and
@@ -80,16 +120,15 @@ message SourcePackage {
 
 message BinaryPackage {
     required string name = 1; // Package
-    required SourcePackage source = 2;
-    required string architecture = 3;
-    optional string version = 4;
-    optional string section = 5;
-    optional Priority priority = 6 [default = STANDARD];
+    required string architecture = 2;
+    optional string version = 3;
+    optional string section = 4;
+    optional Priority priority = 5 [default = STANDARD];
     optional bool essential = 16; // High number because this is rarely set.
 
-    repeated Relation depends = 7;
-    repeated Relation recommends = 8;
-    repeated Relation suggests = 9;
+    repeated Relation depends = 6;
+    repeated Relation recommends = 7;
+    repeated Relation suggests = 8;
     // enhances and pre_depends are rare, hence high numbers.
     repeated Relation enhances = 17;
     repeated Relation pre_depends = 18;
@@ -98,14 +137,14 @@ message BinaryPackage {
     repeated Relation conflicts = 19;
     repeated Relation breaks = 20;
 
-    repeated string provides = 10;
-    repeated Relation replaces = 11;
+    repeated string provides = 9;
+    repeated Relation replaces = 10;
 
-    optional person.Person maintainer = 12;
-    optional string description = 13;
-    optional string homepage = 14;
+    optional person.Person maintainer = 11;
+    optional string description = 12;
+    optional string homepage = 13;
 
-    optional string package_type = 15 [default = 'deb'];
+    optional string package_type = 14 [default = 'deb'];
     repeated Relation built_using = 21;
 
 

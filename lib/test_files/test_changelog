@@ -1,0 +1,39 @@
+﻿package (0.0.3) stable; urgency=critical
+  *A line here that doesn't have a space after the asterisk.
+  A line with no asterisk at all, not carrying on from a previous one.
+  [ One person ]
+  * I don't like empty lines at all
+  [ Other person ]
+  * This is really really super important. So important that I'm going to write
+    an entire paragraph telling you why, including:
+   - A random bullet point
+   - Actually make that two. Maybe more in just a bit. I'm not really sure. But
+     first I want to interject with this second line
+   - Yeah, let's have a third bullet point.
+  * Oh, I like new lines so I'm going to put in a few. They should be parsed
+    out anyway. But the lack of a line before this and the next package entry
+    is intentional.
+
+
+ -- Someone brand new <brand_new@example.com>  Thu, 01 Jan 1970 14:46:40 +1200
+package (0.0.2) stable testing unstable contrib; urgency=low (HIGH if you were affected by some arbitrary bug or something)
+  * I don't like that optional blank line, so I'm not doing it.
+  * I do like multiple entries, though. Especially when one of the entries
+    ends up going onto the next line.
+  * Even moreso if it's followed by another entry.
+
+  * That space was intentional. Not putting one below here, though.
+ -- Third maintainer person <someone@example.com>  Thu, 01 Jan 1970 02:16:40 +0200
+
+package (0.0.1-0ubuntu1~ubuntu70.04~ppa1) stable testing; urgency=medium
+
+  * New upstream release. Also, trying out fancy version numbers and making this
+    package available in testing. Multiline changelog entry.
+
+ -- Some other maintainer <other_guy@example.org>  Thu, 01 Jan 1970 00:01:40 +0000
+
+package (0.0.0) stable; urgency=low
+
+  * Initial release.
+
+ -- Some maintainer <maintainer@example.org>  Wed, 31 Dec 1969 19:00:10 -0500

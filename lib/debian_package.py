@@ -1,129 +1,357 @@
-﻿#!/usr/bin/env python2.7
-# -*- coding:utf-8 -*-
-
-""" Debian package classes.
-Requires debian_package_pb2, generated from the debian_package protobuf.
+﻿""" Debian package classes.
+Requires debian_pb2, generated from the debian_package protobuf.
 """
+
+import calendar
+import dateutil.parser
+import string
+
 import debian_package_pb2 as pb
+import file
+
+
+URGENCY_ERROR_VALUE = 'Invalid package urgency: %s'
+KEYWORD_ERROR_VALUE = ('Invalid changelog keyword: "%s". '
+                       'Valid keywords are: urgency')
+
+class UrgencyError(ValueError):
+    """Raised if a changelog urgency value is erroneous."""
+    def __init__(self, urgency):
+        self.urgency = urgency
+
+    def __str__(self):
+        return URGENCY_ERROR_VALUE % self.urgency
+
+
+class KeywordError(ValueError):
+    """Raised if a keyword value from a changelog is erroneous."""
+    def __init__(self, keyword):
+        self.keyword = keyword
+
+    def __str__(self):
+        return KEYWORD_ERROR_VALUE % self.keyword
+
+
+def _generic_property(property_name, docstring=None):
+    """A generic class property.
+    Most properties of classes in this module are simple wrappers around
+    protobuf fields. Making a generic property and using closures makes these
+    simple properties much more readable.
+
+    Args:
+        property_name: A string containing the name by which the property is
+            known in debian_package.proto.
+    Returns:
+        A python property that should be named property_name
+    """
+    return property(_property_getter(property_name),
+                    _property_setter(property_name),
+                    _property_deleter(property_name),
+                    docstring)
+
+
+def _property_getter(property):
+    def get(self):
+        if not self._pb.HasField(property):
+            return None
+        return getattr(self._pb, property)
+    return get
+
+
+def _property_setter(property):
+    def set(self, value):
+        setattr(self._pb, property, value)
+    return set
+
+
+def _property_deleter(property):
+    def delete(self):
+        self._pb.ClearField(property)
+    return delete
+
+
+def get_urgency_from_string(string):
+    """Get the urgency and its commentary from a string.
+
+    From a keyword=value section of a changelog entry line, get the urgency
+    enum value. If there is commentary, return it as well.
+
+    Example strings:
+    medium
+    medium (HIGH for anyone who exposes this to the Internet)
+
+    Args:
+        string: The string containing the urgency and commentary.
+    Returns:
+        A tuple containing the urgency enum value and the commentary string.
+        The commentary will be None (not a string) if there is no commentary.
+    """
+    split_field = string.split(' (', 1)
+    urgency = split_field[0].upper()
+    if len(split_field) == 1:
+        commentary = None
+    else:
+        commentary = split_field[1].strip(')')
+    try:
+        urgency_value = getattr(pb, urgency)
+    except AttributeError:
+        raise UrgencyError(urgency)
+    return (urgency_value, commentary)
 
 
 class Relation:
     """ A Debian package relation.
 
-    This class represents a related package for our package. For example, this
-    could be a dependency, a conflict, or one of several other relationships.
-
-    Attributes:
-        name: A string containing the name of the package upon which our
-            parent package depends.
-        version: A string containing the significant version number.
-        relationship: The set of versions to which the parent package has a
-            relationship.
-        related_package: An object containing either the Package to which
-            the parent package is related.
+    This abstract class represents a related package for our package.
+    For example, this could be a dependency, a conflict, or one of several
+    other relationships.
     """
-    RELATIONSHIP_STRINGS = {
-        'STRICTLY_EARLIER': '<<',
-        'EARLIER_OR_EQUAL': '<=',
-        'EQUAL': '=',
-        'LATER_OR_EQUAL': '>=',
-        'STRICTLY_LATER': '>>'
-    }
+    _RELATIONSHIP_STRINGS = {
+        # The first string in each tuple is the string that will be used as
+        # the canonical form.
+        u'STRICTLY_EARLIER': (
+            u'<<', u'<',
+            u'strictly earlier', u'strictly_earlier',
+            u'less than', u'less_than', u'lt'),
+        u'EARLIER_OR_EQUAL': (
+            u'<=',
+            u'less or equal', u'less_or_equal', u'leq',
+            u'earlier or equal', u'earlier_or_equal',
+            u'less than or equal to', u'less_than_or_equal_to'),
+        u'EQUAL': (
+            u'=', u'==', u'===',
+            u'equal', u'eq', u'equal to', u'equals'),
+        u'LATER_OR_EQUAL': (
+            u'>=',
+            u'greater or equal', u'greater_or_equal', u'geq',
+            u'later or equal', u'later_or_equal',
+            u'greater than or equal to', u'greater_than_or_equal_to'),
+        u'STRICTLY_LATER': (
+            u'>>', u'>',
+            u'greater than', u'greater_than', u'gt',
+            u'strictly later', u'strictly_later')}
 
-    def __init__(self, name, version=None, relationship=None):
-        self._relation_pb = pb.Relation()
-        self.name = name
-        if type(version) == str:
-            self._relation_pb.version = version
-            self.relationship = relationship
+    @classmethod
+    def get_relationship_string(cls, relationship):
+        """Get the canonical relationshp string from a Relation protobuf.
 
-    @property
-    def name(self):
-        if not self._relation_pb.HasField('name'):
-            return None
-        return self._relation_pb.name
+        Args:
+            relationship: A relationship enum value or Relation protobuf.
+        Returns:
+            A string of the relationship to be used.
+        """
+        if isinstance(relationship, pb.Relation):
+            if not relationship.HasField('relationship'):
+                return None
+            return cls.get_relationship_string(relationship.relationship)
+        return cls._RELATIONSHIP_STRINGS[pb.Relation.Relationship.Name(
+            relationship)][0]
 
-    @name.setter
-    def name(self, name):
-        self._relation_pb.name = name
+    @classmethod
+    def parse_relationship(cls, relationship):
+        """Parse a relationship for setting a relationship field.
 
-    @name.deleter
-    def name(self):
-        self._relation_pb.ClearField('name')
+        Example use:
+        x = debian_package_pb2.Relation()
+        x.relationship = Relation.parse_relationship('>')
 
-    @property
-    def relationship(self):
-        if not self._relation_pb.HasField('relationship'):
-            return None
-        return self.RELATIONSHIP_STRINGS[pb.Relation.Relationship.Name(
-            self._relation_pb.relationship)]
-
-    @relationship.setter
-    def relationship(self, relationship):
+        Args:
+            relationship: A string, integer, or enum of the relationship.
+        Returns:
+            A Relationship enum (as an integer).
+        """
         UNDEFINED_RELATIONSHIP = (
             'Relationship must be one of the defined relationship values from '
             'the Debian Policy Manual. ')
-        if relationship is None:
-            del self.relationship
-            return
-        if type(relationship) in (str, unicode):
-            rel_lower = relationship.lower()
-            # NOTE: '<' for Earlier is deprecated, but still allowed.
-            #       We will always use '<<'
-            if rel_lower in {'<', '<<', 'strictly earlier', 'strictly_earlier',
-                             'lt', 'less than', 'less_than'}:
-                self._relation_pb.relationship = (
-                    pb.Relation.STRICTLY_EARLIER)
-            elif rel_lower in {'<=', 'less or equal', 'earlier or equal',
-                               'less_or_equal', 'earlier_or_equal',
-                               'less than or equal to',
-                               'less_than_or_equal_to', 'leq'}:
-                self._relation_pb.relationship = (
-                    pb.Relation.EARLIER_OR_EQUAL)
-            elif rel_lower in {'=', '==', '===', 'equal', 'eq'}:
-                self._relation_pb.relationship = pb.Relation.EQUAL
-            elif rel_lower in {'>=', 'greater or equal', 'later or equal',
-                               'greater_or_equal', 'later_or_equal',
-                               'greater than or equal to',
-                               'greater_than_or_equal_to', 'geq'}:
-                self._relation_pb.relationship = (
-                    pb.Relation.LATER_OR_EQUAL)
-            elif rel_lower in {'>', '>>', 'strictly later', 'gt',
-                               'strictly_later', 'greater than',
-                               'greater_than'}:
-                self._relation_pb.relationship = (
-                    pb.Relation.STRICTLY_LATER)
-            else:
-                raise ValueError(UNDEFINED_RELATIONSHIP,
-                                 'See debian_package.py for a list of valid '
-                                 'relationship strings.')
-        elif type(relationship) == int:
-            if 0 <= relationship <= 4:
-                self._relation_pb.relationship = relationship
-            else:
-                raise ValueError(
-                    UNDEFINED_RELATIONSHIP,
-                    'These correspond with the numbers 0-4 as integers. '
-                    'See debian_package.proto for more details.')
-        else:
+        if isinstance(relationship, (str, unicode)):
+            relationship = unicode(relationship.lower())
+            for rel_type in cls._RELATIONSHIP_STRINGS:
+                if relationship in cls._RELATIONSHIP_STRINGS[rel_type]:
+                    return getattr(pb.Relation, rel_type)
             raise ValueError(UNDEFINED_RELATIONSHIP,
-                             'Only strings and integers (enum values) are '
-                             'accepted for setting relationship values.')
+                             'See debian_package.py for all valid '
+                             'relationship strings.')
+        elif isinstance(relationship, int):
+            if relationship in pb.Relation.Relationship.values():
+                return relationship
+            raise ValueError(
+                UNDEFINED_RELATIONSHIP,
+                'These correspond with the numbers 0-4 as integers. '
+                'See debian_package.proto for more details.')
+        else:
+            raise TypeError(UNDEFINED_RELATIONSHIP,
+                            'Only strings and integers (enum values) are '
+                            'accepted for setting relationship values.')
 
-    @relationship.deleter
-    def relationship(self):
-        self._relation_pb.ClearField('relationship')
 
-    @property
-    def version(self):
-        if not self._relation_pb.HasField('version'):
-            return None
-        return self._relation_pb.version
+class _Package(object):
+    """ A generic Debian package.
+    A _Package should never be instantiated or otherwise used except as a
+    class parent for SourcePackage, BinaryPackage, and potential other package
+    types.
 
-    @version.setter
-    def version(self, version):
-        self._relation_pb.version = version
+    Attributes:
+        name: A string containing the name of the package.
+        TODO: _Package attributes
+    """
 
-    @version.deleter
-    def version(self):
-        self._relation_pb.ClearField('version')
+    def __init__(self):
+        if not hasattr(self, '_pb'):
+            raise AttributeError(
+                '__init__ function for %s did not initialise a protobuf before'
+                ' calling _Package.__init__' % type(self))
+
+        # These properties are passed through so external code can directly
+        # modify the protobuf fields.
+        # Some may later be replaced with our own properties.
+        self.additional_field = self._pb.additional_field
+        self.maintainer = self._pb.maintainer
+
+    # These simple properties are given wrappers that allow a more pythonic
+    # use, rather than using the Protocol Buffer API directly.
+    name = _generic_property('name')
+    section = _generic_property('section')
+    priority = _generic_property('priority')
+    homepage = _generic_property('homepage')
+
+
+class SourcePackage(_Package):
+    """A source package for Debian.
+
+    A SourcePackage represents a Debian source package, as defined in the
+    Debian Policy Manual, chapter 4.
+    https://www.debian.org/doc/debian-policy/ch-source.html
+
+    Attributes:
+        TODO: SourcePackage attributes.
+    """
+
+    def __init__(self, protobuf=None):
+        if isinstance(protobuf, pb.SourcePackage):
+            self._pb = protobuf
+        elif protobuf is None:
+            self._pb = pb.SourcePackage()
+        else:
+            raise TypeError('Must import a SourcePackage protobuf. Imported:',
+                            type(protobuf))
+        _Package.__init__(self)
+
+        # Many properties are easier to pass through straight to the protobuf
+        # for now. Later we may define properties for them instead.
+        self.uploader = self._pb.uploader
+
+        self.build_depends = self._pb.build_depends
+        self.build_depends_indep = self._pb.build_depends_indep
+        self.build_conflicts = self._pb.build_conflicts
+        self.build_conflicts_indep = self._pb.build_conflicts_indep
+
+        self.standards_version = self._pb.standards_version
+        self.changelog = self._pb.changelog
+
+        self.binary_packages = self._pb.binary_packages
+
+        self.vcs = self._pb.vcs
+
+        self.original_tarball = self._pb.original_tarball
+
+    vcs_browser = _generic_property('vcs_browser')
+
+    def import_changelog_file(self, changelog):
+        """Imports the changelog from a file. Extends current changelog.
+
+        The changelog format looks like:
+        package (version) distribution(s); urgency=urgency
+            [optional blank line(s), stripped]
+          * change details
+            more change details
+            [blank line(s), included in output of dpkg-parsechangelog]
+          * even more change details
+            [optional blank line(s), stripped]
+         -- maintainer name <email address>[two spaces]  date
+
+        where the 'p' in 'package' is in column 0.
+
+        Args:
+            changelog: A readable unicode file object containing the changelog.
+        """
+        changelog.seek(0)
+        changes = []
+        while True:
+            change = pb.Change()
+            changelog_line = file.next_nonempty_line(changelog)
+            if changelog_line is None:
+                break
+            sections = changelog_line.split(';')
+            words = sections[0].split()
+            change.name = words[0]
+            change.version = words[1].strip('()')
+            # TODO: Check for multiple distributions
+            change.distribution.extend([word.strip(';') for word in words[2:]])
+            # TODO: Better split the urgency.
+            keyword_values = sections[1].split(',')
+            for keyword_value in keyword_values:
+                key_value = keyword_value.strip().split('=')
+                if key_value[0] == 'urgency':
+                    change.urgency, commentary = get_urgency_from_string(
+                        key_value[1])
+                    if commentary:
+                        change.urgency_commentary = commentary
+                else:
+                    raise KeywordError(keyword_value)
+            changelog_line = file.next_nonempty_line(changelog)
+            entries = []
+            while changelog_line[:3] != ' --':
+                entries.append(changelog_line[2:-1])
+                changelog_line = changelog.readline()
+            while not entries[-1]:
+                del entries[-1]
+            change.entries.extend(entries)
+            # TODO: Find an existing Person if it exists; otherwise create one.
+            email_start = changelog_line.find('<')
+            email_end = changelog_line.find('>')
+            change.maintainer.name = changelog_line[4:email_start-1]
+            change.maintainer.email = changelog_line[email_start+1:email_end-1]
+            change.timestamp = calendar.timegm(dateutil.parser.parse(
+                changelog_line[email_end+3:]).utctimetuple())
+            changes.insert(0, change)
+        self.changelog.extend(changes)
+
+
+class BinaryPackage(_Package):
+    """A binary package for Debian.
+
+    A BinaryPackage represents a Debian binary package, as defined in the
+    Debian Policy Manual, chapter 3.
+    https://www.debian.org/doc/debian-policy/ch-binary.html
+
+    Attributes:
+        TODO: BinaryPackage attributes
+    """
+    def __init__(self, protobuf=None):
+        if isinstance(protobuf, pb.BinaryPackage):
+            self._pb = protobuf
+        elif protobuf is None:
+            self._pb = pb.BinaryPackage()
+        else:
+            raise TypeError('Must import a BinaryPackage protobuf. Imported:',
+                            type(protobuf))
+
+        _Package.__init__(self)
+
+        # Properties where the user may directly modify the protobuf.
+        # TODO: Replace relation pass-through properties with something better.
+        self.depends = self._pb.depends
+        self.recommends = self._pb.recommends
+        self.suggests = self._pb.suggests
+        self.enhances = self._pb.enhances
+        self.pre_depends = self._pb.pre_depends
+        self.conflicts = self._pb.conflicts
+        self.breaks = self._pb.breaks
+        self.replaces = self._pb.replaces
+
+    architecture = _generic_property('architecture')
+    version = _generic_property('version')
+    essential = _generic_property('essential')
+    provides = _generic_property('provides')
+    description = _generic_property('description')
+    package_type = _generic_property('package_type')
