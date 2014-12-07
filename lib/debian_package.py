@@ -2,19 +2,24 @@
 Requires debian_pb2, generated from the debian_package protobuf.
 """
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import calendar
 from datetime import datetime
 import dateutil.parser
 import os
 import string
 
-import debian_package_pb2 as pb
-import file
+from debalot.lib import debian_package_pb2 as pb
+from debalot.lib import file
 
 
-URGENCY_ERROR_VALUE = 'Invalid package urgency: %s'
-KEYWORD_ERROR_VALUE = ('Invalid changelog keyword: "%s". '
-                       'Valid keywords are: urgency')
+URGENCY_ERROR_VALUE = u'Invalid package urgency: %s'
+KEYWORD_ERROR_VALUE = (u'Invalid changelog keyword: "%s". '
+                       u'Valid keywords are: urgency')
 
 
 class UrgencyError(ValueError):

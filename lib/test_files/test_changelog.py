@@ -1,8 +1,13 @@
 ﻿"""test_changelog in protobuf form."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import codecs
 
-import debian_package_pb2
+from debalot.lib import debian_package_pb2
 
 SOURCE_PACKAGE = debian_package_pb2.SourcePackage()
 SOURCE_PACKAGE.name = u'package'

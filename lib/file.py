@@ -1,5 +1,10 @@
 ﻿"""File interaction libraries."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 
 def next_nonempty_line(file):
     """Returns the next non-empty line of a file.

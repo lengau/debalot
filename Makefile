@@ -12,13 +12,16 @@ all: python_pb2 python_packages
 python_pb2: $(PB_PY)/person$(PB_PY_SFX) $(PB_PY)/debian_package$(PB_PY_SFX)
 .PHONY : python_pb2
 
-python_packages: lib/__init__.py
+python_packages: __init__.py lib/__init__.py
 .PHONY : python_packages
 
 $(PB_PY)/%$(PB_PY_SFX): $(PB_DIR)/%.proto
 	$(PB_COMPILER) $<
 
 %/__init__.py:
+	touch $@
+
+__init__.py:
 	touch $@
 
 # Delete any generated pb2 files. Delete directories that only held them.
@@ -35,3 +38,10 @@ clean:
 test: all lib/test_files/__init__.py
 	find . -name *_test.py -type f | parallel python-coverage run
 	python-coverage report -m
+
+.PHONY: test3
+test3: all lib/test_files/__init__.py
+	@echo 'Testing with python 3...'
+	@echo 'Once protobuf is available for python 3, these tests should pass.'
+	find . -name *_test.py -type f | parallel python3-coverage run
+	python3-coverage report -m

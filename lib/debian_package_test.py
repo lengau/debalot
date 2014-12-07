@@ -3,15 +3,20 @@
 
 """Tests for debian_package module."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import codecs
 import mock
 import os
 import tempfile
 import unittest
 
-from test_files import test_changelog
-import debian_package
-import debian_package_pb2
+from debalot.lib.test_files import test_changelog
+from debalot.lib import debian_package
+from debalot.lib import debian_package_pb2
 
 
 class TestGenericProperties(unittest.TestCase):
