@@ -13,8 +13,8 @@ import dateutil.parser
 import os
 import string
 
-from debalot.lib import debian_package_pb2 as pb
-from debalot.lib import file
+from . import debian_package_pb2 as pb
+from . import file
 
 
 URGENCY_ERROR_VALUE = u'Invalid package urgency: %s'

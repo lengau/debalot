@@ -14,7 +14,7 @@ import os
 import tempfile
 import unittest
 
-from debalot.lib.test_files import test_changelog
+from .test_files import test_data
 from debalot.lib import debian_package
 from debalot.lib import debian_package_pb2
 
@@ -181,10 +181,10 @@ class TestInitialisePackages(unittest.TestCase):
 class TestSourcePackageChangelog(unittest.TestCase):
     def setUp(self):
         self.changelog_source_filename = os.path.join(
-            os.path.dirname(__file__), 'test_files/test_changelog')
+            os.path.dirname(__file__), 'test_files/test_data.SourcePackage')
         self.source_package = debian_package.SourcePackage()
         self.data_package = debian_package.SourcePackage(
-            protobuf=test_changelog.SOURCE_PACKAGE)
+            protobuf=test_data.SourcePackage.SOURCE_PACKAGE)
         self.addTypeEqualityFunc(debian_package_pb2.Change,
                                  self.assert_changes_equal)
 
@@ -211,7 +211,7 @@ class TestSourcePackageChangelog(unittest.TestCase):
         with codecs.open(self.changelog_source_filename,
                          encoding='utf-8-sig') as changelog_source_file:
             self.source_package.import_changelog_file(changelog_source_file)
-        expected = test_changelog.SOURCE_PACKAGE.changelog
+        expected = test_data.SourcePackage.SOURCE_PACKAGE.changelog
         actual = self.source_package._pb.changelog
         self.assert_changelogs_equal(expected, actual)
 
@@ -237,7 +237,8 @@ class TestSourcePackageChangelog(unittest.TestCase):
     def test_generate_changelog(self):
         output_changelog = [
             line for line in self.data_package.generate_changelog()]
-        self.assertEqual(test_changelog.OUTPUT_CHANGELOG, output_changelog)
+        self.assertEqual(test_data.SourcePackage.OUTPUT_CHANGELOG,
+                         output_changelog)
 
     def test_export_changelog_file(self):
         answer_filename = self.changelog_source_filename + '_fixed'
