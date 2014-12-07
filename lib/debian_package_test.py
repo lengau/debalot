@@ -180,15 +180,35 @@ class TestSourcePackageChangelog(unittest.TestCase):
         self.source_package = debian_package.SourcePackage()
         self.data_package = debian_package.SourcePackage(
             protobuf=test_changelog.SOURCE_PACKAGE)
+        self.addTypeEqualityFunc(debian_package_pb2.Change,
+                                 self.assert_changes_equal)
+
+    def assert_changes_equal(self, expected, actual, msg=None):
+        self.assertEqual(expected.name, actual.name, msg=None)
+        self.assertEqual(expected.version, actual.version, msg=None)
+        self.assertEqual(expected.distributions, actual.distributions,
+                         msg=None)
+        self.assertEqual(expected.urgency, actual.urgency, msg=None)
+        self.assertEqual(expected.entries, actual.entries, msg=None)
+        self.assertEqual(expected.timestamp, actual.timestamp, msg=None)
+        self.assertEqual(expected.timezone, actual.timezone, msg=None)
+        self.assertEqual(expected.maintainer.name,
+                         actual.maintainer.name, msg=None)
+        self.assertEqual(expected.maintainer.email,
+                         actual.maintainer.email, msg=None)
+
+    def assert_changelogs_equal(self, expected, actual, msg=None):
+        self.assertEqual(len(expected), len(actual), msg=None)
+        for i in range(len(expected)):
+            self.assertEqual(expected[i], actual[i], msg=None)
 
     def test_import_changelog_file_succeeds(self):
         with codecs.open(self.changelog_source_filename,
-                         encoding='utf-8') as changelog_source_file:
+                         encoding='utf-8-sig') as changelog_source_file:
             self.source_package.import_changelog_file(changelog_source_file)
-
-    def test_import_changelog_file_correct_data(self):
-        # TODO: This test
-        pass
+        expected = test_changelog.SOURCE_PACKAGE.changelog
+        actual = self.source_package._pb.changelog
+        self.assert_changelogs_equal(expected, actual)
 
     def test_import_changelog_file_invalid_urgency(self):
         source_filename = self.changelog_source_filename + '_invalid_urgency'
@@ -209,14 +229,10 @@ class TestSourcePackageChangelog(unittest.TestCase):
                 self.source_package.import_changelog_file(
                     changelog_source_file)
 
-    def test_generate_changelog_succeeds(self):
+    def test_generate_changelog(self):
         output_changelog = [
             line for line in self.data_package.generate_changelog()]
         self.assertEqual(test_changelog.OUTPUT_CHANGELOG, output_changelog)
-
-    def test_generate_changelog_correct_data(self):
-        # TODO: This test
-        pass
 
     def test_export_changelog_file(self):
         answer_filename = self.changelog_source_filename + '_fixed'
@@ -227,8 +243,8 @@ class TestSourcePackageChangelog(unittest.TestCase):
             self.data_package.export_changelog_file(output)
             output.seek(0)
             actual = output.readlines()
-        self.maxDiff = None
         self.assertEqual(expected, actual)
+        os.remove(output_filename)
 
 
 if __name__ == "__main__":

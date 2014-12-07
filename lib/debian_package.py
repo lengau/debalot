@@ -16,6 +16,7 @@ URGENCY_ERROR_VALUE = 'Invalid package urgency: %s'
 KEYWORD_ERROR_VALUE = ('Invalid changelog keyword: "%s". '
                        'Valid keywords are: urgency')
 
+
 class UrgencyError(ValueError):
     """Raised if a changelog urgency value is erroneous."""
     def __init__(self, urgency):
@@ -329,7 +330,7 @@ class SourcePackage(_Package):
             email_start = changelog_line.find('<')
             email_end = changelog_line.find('>')
             change.maintainer.name = changelog_line[4:email_start-1]
-            change.maintainer.email = changelog_line[email_start+1:email_end-1]
+            change.maintainer.email = changelog_line[email_start+1:email_end]
             timestamp = dateutil.parser.parse(changelog_line[email_end+3:])
             change.timestamp = calendar.timegm(timestamp.utctimetuple())
             change.timezone = int(timestamp.tzinfo.utcoffset(
