@@ -12,7 +12,7 @@ all: python_pb2 python_packages
 python_pb2: $(PB_PY)/person$(PB_PY_SFX) $(PB_PY)/debian_package$(PB_PY_SFX)
 .PHONY : python_pb2
 
-python_packages: __init__.py lib/__init__.py
+python_packages: __init__.py lib/__init__.py commands/__init__.py
 .PHONY : python_packages
 
 $(PB_PY)/%$(PB_PY_SFX): $(PB_DIR)/%.proto

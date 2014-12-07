@@ -14,7 +14,7 @@ import os
 import tempfile
 import unittest
 
-from .test_files import test_data
+from debalot.lib.test_files import test_data
 from debalot.lib import debian_package
 from debalot.lib import debian_package_pb2
 
@@ -181,7 +181,7 @@ class TestInitialisePackages(unittest.TestCase):
 class TestSourcePackageChangelog(unittest.TestCase):
     def setUp(self):
         self.changelog_source_filename = os.path.join(
-            os.path.dirname(__file__), 'test_files/test_data.SourcePackage')
+            os.path.dirname(__file__), 'test_files/test_changelog')
         self.source_package = debian_package.SourcePackage()
         self.data_package = debian_package.SourcePackage(
             protobuf=test_data.SourcePackage.SOURCE_PACKAGE)
