@@ -32,6 +32,6 @@ clean:
 	rm .coverage
 
 .PHONY: test
-test: all
+test: all lib/test_files/__init__.py
 	find . -name *_test.py -type f | parallel python-coverage run
 	python-coverage report -m

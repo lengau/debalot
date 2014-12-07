@@ -6,8 +6,10 @@
 import codecs
 import mock
 import os
+import tempfile
 import unittest
 
+from test_files import test_changelog
 import debian_package
 import debian_package_pb2
 
@@ -15,7 +17,8 @@ import debian_package_pb2
 class TestGenericProperties(unittest.TestCase):
     def setUp(self):
         self.object = mock.Mock()
-        self.getter = debian_package._property_getter('property')
+        self.getter = debian_package._GenericProperty._property_getter(
+            'property')
 
     def test_getter_no_field(self):
         self.object._pb.HasField.return_value = False
@@ -23,31 +26,18 @@ class TestGenericProperties(unittest.TestCase):
 
     def test_getter_with_field(self):
         self.object._pb.HasField.return_value = True
-        self.assertEqual(self.object._pb.property, self.getter(self.object))
+        self.assertIs(self.object._pb.property, self.getter(self.object))
 
     def test_setter(self):
-        setter = debian_package._property_setter('property')
+        setter = debian_package._GenericProperty._property_setter('property')
         desired_value = mock.Mock()
         setter(self.object, desired_value)
         self.assertIs(self.object._pb.property, desired_value)
 
     def test_deleter(self):
-        deleter = debian_package._property_deleter('property')
+        deleter = debian_package._GenericProperty._property_deleter('property')
         deleter(self.object)
         self.object._pb.ClearField.assert_called_once_with('property')
-
-
-class TestErrors(unittest.TestCase):
-    def test_urgency_error(self):
-        error = debian_package.UrgencyError('some_urgency_value')
-        expected = 'Invalid package urgency: some_urgency_value'
-        self.assertEqual(str(error), expected)
-
-    def test_keyword_error(self):
-        error = debian_package.KeywordError('non-keyword')
-        expected = ('Invalid changelog keyword: "non-keyword". Valid keywords '
-                    'are: urgency')
-        self.assertEqual(str(error), expected)
 
 
 class TestGetUrgencyFromString(unittest.TestCase):
@@ -179,10 +169,8 @@ class TestInitialisePackages(unittest.TestCase):
         self.assertIsInstance(package._pb, debian_package_pb2.BinaryPackage)
 
     def test_binarypackage_invalid(self):
-        self.assertRaises(
-            TypeError,
-            debian_package.BinaryPackage,
-            protobuf='Not a protobuf')
+        with self.assertRaises(TypeError):
+            debian_package.BinaryPackage(protobuf='Not a protobuf')
 
 
 class TestSourcePackageChangelog(unittest.TestCase):
@@ -190,27 +178,57 @@ class TestSourcePackageChangelog(unittest.TestCase):
         self.changelog_source_filename = os.path.join(
             os.path.dirname(__file__), 'test_files/test_changelog')
         self.source_package = debian_package.SourcePackage()
+        self.data_package = debian_package.SourcePackage(
+            protobuf=test_changelog.SOURCE_PACKAGE)
 
     def test_import_changelog_file_succeeds(self):
         with codecs.open(self.changelog_source_filename,
                          encoding='utf-8') as changelog_source_file:
             self.source_package.import_changelog_file(changelog_source_file)
 
+    def test_import_changelog_file_correct_data(self):
+        # TODO: This test
+        pass
+
     def test_import_changelog_file_invalid_urgency(self):
         source_filename = self.changelog_source_filename + '_invalid_urgency'
         with codecs.open(source_filename,
                          encoding='utf-8') as changelog_source_file:
-            self.assertRaises(debian_package.UrgencyError,
-                              self.source_package.import_changelog_file,
-                              changelog_source_file)
+            with self.assertRaisesRegexp(debian_package.UrgencyError,
+                                         'Invalid package urgency: .*'):
+                self.source_package.import_changelog_file(
+                    changelog_source_file)
 
     def test_import_changelog_file_invalid_keyword(self):
         source_filename = self.changelog_source_filename + '_invalid_keyword'
         with codecs.open(source_filename,
                          encoding='utf-8') as changelog_source_file:
-            self.assertRaises(debian_package.KeywordError,
-                              self.source_package.import_changelog_file,
-                              changelog_source_file)
+            with self.assertRaisesRegexp(debian_package.KeywordError,
+                                         ('Invalid changelog keyword: .*\. '
+                                          'Valid keywords are: .*')):
+                self.source_package.import_changelog_file(
+                    changelog_source_file)
+
+    def test_generate_changelog_succeeds(self):
+        output_changelog = [
+            line for line in self.data_package.generate_changelog()]
+        self.assertEqual(test_changelog.OUTPUT_CHANGELOG, output_changelog)
+
+    def test_generate_changelog_correct_data(self):
+        # TODO: This test
+        pass
+
+    def test_export_changelog_file(self):
+        answer_filename = self.changelog_source_filename + '_fixed'
+        with codecs.open(answer_filename, encoding='utf-8-sig') as f:
+            expected = f.readlines()
+        output_filename = tempfile.mkstemp(prefix='debalot_test_')[1]
+        with codecs.open(output_filename, 'w+', encoding='utf-8') as output:
+            self.data_package.export_changelog_file(output)
+            output.seek(0)
+            actual = output.readlines()
+        self.maxDiff = None
+        self.assertEqual(expected, actual)
 
 
 if __name__ == "__main__":

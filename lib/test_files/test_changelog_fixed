@@ -1,4 +1,5 @@
 ﻿package (0.0.3) stable; urgency=critical
+
   *A line here that doesn't have a space after the asterisk.
   A line with no asterisk at all, not carrying on from a previous one.
   [ One person ]
@@ -14,15 +15,17 @@
     They should be parsed out anyway. But the lack of a line before this and
     the next package entry is intentional.
 
-
  -- Someone brand new <brand_new@example.com>  Thu, 01 Jan 1970 14:46:40 +1200
+
 package (0.0.2) stable testing unstable contrib; urgency=low (HIGH if you were affected by some arbitrary bug or something)
+
   * I don't like that optional blank line, so I'm not doing it.
   * I do like multiple entries, though. Especially when one of the entries
     ends up going onto the next line.
   * Even moreso if it's followed by another entry.
 
   * That space was intentional. Not putting one below here, though.
+
  -- Third maintainer person <someone@example.com>  Thu, 01 Jan 1970 02:16:40 +0200
 
 package (0.0.1-0ubuntu1~ubuntu70.04~ppa1) stable testing; urgency=medium

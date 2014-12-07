@@ -3,7 +3,9 @@ Requires debian_pb2, generated from the debian_package protobuf.
 """
 
 import calendar
+from datetime import datetime
 import dateutil.parser
+import os
 import string
 
 import debian_package_pb2 as pb
@@ -32,42 +34,44 @@ class KeywordError(ValueError):
         return KEYWORD_ERROR_VALUE % self.keyword
 
 
-def _generic_property(property_name, docstring=None):
-    """A generic class property.
+class _GenericProperty(property):
+    """A generic protobuf property.
     Most properties of classes in this module are simple wrappers around
-    protobuf fields. Making a generic property and using closures makes these
-    simple properties much more readable.
+    protobuf fields. Making a generic property and using closures makes
+    these simple properties much more readable.
 
     Args:
-        property_name: A string containing the name by which the property is
-            known in debian_package.proto.
+        property_name: A string containing the name by which the property
+            is known in debian_package.proto.
     Returns:
         A python property that should be named property_name
     """
-    return property(_property_getter(property_name),
-                    _property_setter(property_name),
-                    _property_deleter(property_name),
-                    docstring)
+    # TODO: Implement HasField for generic properties.
+    def __new__(cls, property_name, docstring=None):
+        return property(cls._property_getter(property_name),
+                        cls._property_setter(property_name),
+                        cls._property_deleter(property_name),
+                        docstring)
 
+    @classmethod
+    def _property_getter(cls, property):
+        def get(self):
+            if not self._pb.HasField(property):
+                return None
+            return getattr(self._pb, property)
+        return get
 
-def _property_getter(property):
-    def get(self):
-        if not self._pb.HasField(property):
-            return None
-        return getattr(self._pb, property)
-    return get
+    @classmethod
+    def _property_setter(cls, property):
+        def set(self, value):
+            setattr(self._pb, property, value)
+        return set
 
-
-def _property_setter(property):
-    def set(self, value):
-        setattr(self._pb, property, value)
-    return set
-
-
-def _property_deleter(property):
-    def delete(self):
-        self._pb.ClearField(property)
-    return delete
+    @classmethod
+    def _property_deleter(cls, property):
+        def delete(self):
+            self._pb.ClearField(property)
+        return delete
 
 
 def get_urgency_from_string(string):
@@ -86,7 +90,7 @@ def get_urgency_from_string(string):
         A tuple containing the urgency enum value and the commentary string.
         The commentary will be None (not a string) if there is no commentary.
     """
-    split_field = string.split(' (', 1)
+    split_field = string.strip().split(' (', 1)
     urgency = split_field[0].upper()
     if len(split_field) == 1:
         commentary = None
@@ -97,6 +101,20 @@ def get_urgency_from_string(string):
     except AttributeError:
         raise UrgencyError(urgency)
     return (urgency_value, commentary)
+
+
+def get_time_string(timestamp, zone):
+    """Get the time string for a changelong from a timestamp and time zone.
+
+    Args:
+        timestamp: integer timestamp value.
+        zone: The timezone offset in minutes.
+    returns:
+        A time string for use in a debian/changelog file.
+    """
+    change_time = datetime.fromtimestamp(
+        timestamp, tz=dateutil.tz.tzoffset(None, zone*60))
+    return change_time.strftime('%a, %d %b %Y %H:%M:%S %z')
 
 
 class Relation:
@@ -209,10 +227,10 @@ class _Package(object):
 
     # These simple properties are given wrappers that allow a more pythonic
     # use, rather than using the Protocol Buffer API directly.
-    name = _generic_property('name')
-    section = _generic_property('section')
-    priority = _generic_property('priority')
-    homepage = _generic_property('homepage')
+    name = _GenericProperty('name')
+    section = _GenericProperty('section')
+    priority = _GenericProperty('priority')
+    homepage = _GenericProperty('homepage')
 
 
 class SourcePackage(_Package):
@@ -254,7 +272,7 @@ class SourcePackage(_Package):
 
         self.original_tarball = self._pb.original_tarball
 
-    vcs_browser = _generic_property('vcs_browser')
+    vcs_browser = _GenericProperty('vcs_browser')
 
     def import_changelog_file(self, changelog):
         """Imports the changelog from a file. Extends current changelog.
@@ -286,7 +304,8 @@ class SourcePackage(_Package):
             change.name = words[0]
             change.version = words[1].strip('()')
             # TODO: Check for multiple distributions
-            change.distribution.extend([word.strip(';') for word in words[2:]])
+            change.distributions.extend(
+                [word.strip(';') for word in words[2:]])
             # TODO: Better split the urgency.
             keyword_values = sections[1].split(',')
             for keyword_value in keyword_values:
@@ -297,7 +316,7 @@ class SourcePackage(_Package):
                     if commentary:
                         change.urgency_commentary = commentary
                 else:
-                    raise KeywordError(keyword_value)
+                    raise KeywordError(key_value[0])
             changelog_line = file.next_nonempty_line(changelog)
             entries = []
             while changelog_line[:3] != ' --':
@@ -311,10 +330,51 @@ class SourcePackage(_Package):
             email_end = changelog_line.find('>')
             change.maintainer.name = changelog_line[4:email_start-1]
             change.maintainer.email = changelog_line[email_start+1:email_end-1]
-            change.timestamp = calendar.timegm(dateutil.parser.parse(
-                changelog_line[email_end+3:]).utctimetuple())
+            timestamp = dateutil.parser.parse(changelog_line[email_end+3:])
+            change.timestamp = calendar.timegm(timestamp.utctimetuple())
+            change.timezone = int(timestamp.tzinfo.utcoffset(
+                timestamp.tzinfo).total_seconds()/60)
             changes.insert(0, change)
         self.changelog.extend(changes)
+
+    def generate_changelog(self):
+        """Generate a changelog for the package.
+
+        Note that each entry will contain multiple lines, expressed as a list
+        of strings.
+
+        Yields:
+            A changelog entry, from package name to timestamp.
+        """
+        for change in reversed(self.changelog):
+            name = change.name or self.name
+            urgency = pb.Urgency.Name(change.urgency).lower()
+            if change.HasField('urgency_commentary'):
+                urgency += ' ' + change.urgency_commentary
+            yield (u'{name} ({version}) {distributions}; urgency={urgency}'
+                   ).format(name=name, version=change.version,
+                            distributions=' '.join(change.distributions),
+                            urgency=urgency)
+            yield u''
+            for entry in change.entries:
+                yield u'  %s' % entry if entry else u''
+            yield u''
+            yield (u' -- {maintainer.name} <{maintainer.email}>  {timestamp}'
+                   ).format(maintainer=change.maintainer,
+                            timestamp=get_time_string(change.timestamp,
+                                                      change.timezone))
+            yield u''
+
+    def export_changelog_file(self, output_file):
+        """Creates a changelog file from the changes in the source package.
+
+        Args:
+            output_file: A unicode output file object.
+        """
+        for line in self.generate_changelog():
+            output_file.write(line + '\n')
+        output_file.seek(-1, os.SEEK_END)
+        output_file.truncate()
 
 
 class BinaryPackage(_Package):
@@ -349,9 +409,9 @@ class BinaryPackage(_Package):
         self.breaks = self._pb.breaks
         self.replaces = self._pb.replaces
 
-    architecture = _generic_property('architecture')
-    version = _generic_property('version')
-    essential = _generic_property('essential')
-    provides = _generic_property('provides')
-    description = _generic_property('description')
-    package_type = _generic_property('package_type')
+    architecture = _GenericProperty('architecture')
+    version = _GenericProperty('version')
+    essential = _GenericProperty('essential')
+    provides = _GenericProperty('provides')
+    description = _GenericProperty('description')
+    package_type = _GenericProperty('package_type')
