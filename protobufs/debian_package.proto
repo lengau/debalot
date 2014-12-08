@@ -62,7 +62,7 @@ message Change {
 message SourcePackage {
     required string name = 1; // Source
     optional person.Person maintainer = 2;
-    repeated person.Person uploader = 16;
+    repeated person.Person uploaders = 16;
     optional string section = 3;
     optional Priority priority = 4 [default = STANDARD];
 
@@ -87,8 +87,9 @@ message SourcePackage {
     // Version Control System fields. Vcs-Browser is as defined in the Debian
     // Policy Manual. vcs is a generic Field that allows flexibility in version
     // control systems. The key is expected to be only the name of the VCS,
-    // and the value is the ordinary value of the field. For example, the vcs
-    // field for Dpkg would have the key 'Git' and the value
+    // and the value is the ordinary value of the field. For example, dpkg has
+    // the field: 'Vcs-Git: git://anonscm.debian.org/dpkg/dpkg.git'
+    // Its vcs field would therefore have the key 'Git' and the value
     // 'git://anonscm.debian.org/dpkg/dpkg.git'.
     optional string vcs_browser = 17; // Vcs-Browser
     repeated Field vcs = 18;
@@ -114,7 +115,7 @@ message SourcePackage {
     // additional_fields are used for items that are one-off use cases, and
     // which are not listed in the Debian Policy Manual. Fields that are listed
     // in the Debian Policy Manual should be added to this definition.
-    repeated Field additional_field = 99;
+    repeated Field additional_fields = 99;
 
     // Extensions are intended for use defining additional fields that are not
     // used by Debian. For example, fields used by other Debian-based distros
@@ -155,7 +156,7 @@ message BinaryPackage {
     // additional_fields are used for items that are one-off use cases, and
     // which are not listed in the Debian Policy Manual. Fields that are listed
     // in the Debian Policy Manual should be added to this definition.
-    repeated Field additional_field = 99;
+    repeated Field additional_fields = 99;
 
     // Extensions are intended for use defining additional fields that are not
     // used by Debian. For example, fields used by other Debian-based distros

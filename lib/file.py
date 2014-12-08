@@ -22,7 +22,7 @@ def next_nonempty_line(file):
     return line
 
 
-class File:
+class File(object):
     def __init__(self, content=None, name=None, location=None):
 
         self.content = content

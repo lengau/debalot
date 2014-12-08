@@ -1,0 +1,16 @@
+Source: hello-debhelper
+Section: oldlibs
+Priority: extra
+Maintainer: Santiago Vila <sanvila@debian.org>
+Standards-Version: 3.9.5
+Build-Depends: debhelper (>= 9)
+
+Package: hello-debhelper
+Architecture: all
+Depends: ${misc:Depends}, hello
+Description: transitional dummy package for hello
+ hello-debhelper was an example package based on GNU hello.
+ The package has been renamed from hello-debhelper to hello
+ so this package exists to handle the transition.
+ .
+ You can safely remove it.

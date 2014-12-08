@@ -13,8 +13,9 @@ import dateutil.parser
 import os
 import string
 
-from . import debian_package_pb2 as pb
-from . import file
+from debalot.lib import debian_package_pb2 as pb
+from debalot.lib import file
+from debalot.lib import person
 
 
 URGENCY_ERROR_VALUE = u'Invalid package urgency: %s'
@@ -80,47 +81,51 @@ class _GenericProperty(property):
         return delete
 
 
-def get_urgency_from_string(string):
-    """Get the urgency and its commentary from a string.
+class Changelog:
+    """Methods for handling changelogs."""
+    @classmethod
+    def get_urgency_from_string(cls, string):
+        """Get the urgency and its commentary from a string.
 
-    From a keyword=value section of a changelog entry line, get the urgency
-    enum value. If there is commentary, return it as well.
+        From a keyword=value section of a changelog entry line, get the urgency
+        enum value. If there is commentary, return it as well.
 
-    Example strings:
-    medium
-    medium (HIGH for anyone who exposes this to the Internet)
+        Example strings:
+        medium
+        medium (HIGH for anyone who exposes this to the Internet)
 
-    Args:
-        string: The string containing the urgency and commentary.
-    Returns:
-        A tuple containing the urgency enum value and the commentary string.
-        The commentary will be None (not a string) if there is no commentary.
-    """
-    split_field = string.strip().split(' (', 1)
-    urgency = split_field[0].upper()
-    if len(split_field) == 1:
-        commentary = None
-    else:
-        commentary = split_field[1].strip(')')
-    try:
-        urgency_value = getattr(pb, urgency)
-    except AttributeError:
-        raise UrgencyError(urgency)
-    return (urgency_value, commentary)
+        Args:
+            string: The string containing the urgency and commentary.
+        Returns:
+            A tuple containing the urgency enum value and the commentary
+            string. The commentary will be None (not a string) if there is no
+            commentary.
+        """
+        split_field = string.strip().split(' (', 1)
+        urgency = split_field[0].upper()
+        if len(split_field) == 1:
+            commentary = None
+        else:
+            commentary = split_field[1].strip(')')
+        try:
+            urgency_value = getattr(pb, urgency)
+        except AttributeError:
+            raise UrgencyError(urgency)
+        return (urgency_value, commentary)
 
+    @classmethod
+    def get_time_string(cls, timestamp, zone):
+        """Get the time string for a changelong from a timestamp and time zone.
 
-def get_time_string(timestamp, zone):
-    """Get the time string for a changelong from a timestamp and time zone.
-
-    Args:
-        timestamp: integer timestamp value.
-        zone: The timezone offset in minutes.
-    returns:
-        A time string for use in a debian/changelog file.
-    """
-    change_time = datetime.fromtimestamp(
-        timestamp, tz=dateutil.tz.tzoffset(None, zone*60))
-    return change_time.strftime('%a, %d %b %Y %H:%M:%S %z')
+        Args:
+            timestamp: integer timestamp value.
+            zone: The timezone offset in minutes.
+        returns:
+            A time string for use in a debian/changelog file.
+        """
+        change_time = datetime.fromtimestamp(
+            timestamp, tz=dateutil.tz.tzoffset(None, zone*60))
+        return change_time.strftime('%a, %d %b %Y %H:%M:%S %z')
 
 
 class Relation:
@@ -228,7 +233,7 @@ class _Package(object):
         # These properties are passed through so external code can directly
         # modify the protobuf fields.
         # Some may later be replaced with our own properties.
-        self.additional_field = self._pb.additional_field
+        self.additional_fields = self._pb.additional_fields
         self.maintainer = self._pb.maintainer
 
     # These simple properties are given wrappers that allow a more pythonic
@@ -237,6 +242,29 @@ class _Package(object):
     section = _GenericProperty('section')
     priority = _GenericProperty('priority')
     homepage = _GenericProperty('homepage')
+
+    @classmethod
+    def parse_priority(cls, priority):
+        """Parse a priority string for setting a priority field.
+
+        Args:
+            priority: A string or integer of the priority.
+        Returns:
+            A priority enum (as an integer).
+        """
+        if isinstance(priority, (str, unicode)):
+            if priority.upper() in pb.Priority.keys():
+                return dict(pb.Priority.items())[priority.upper()]
+            else:
+                raise ValueError('Priority string does not match protobuf. '
+                                 'Valid priorities are: ', pb.Priority.keys())
+        elif isinstance(priority, int):
+            if priority in pb.Priority.values():
+                return priority
+            else:
+                raise ValueError('Unknown priority: %d' % priority)
+        else:
+            raise TypeError('Only strings and integers are valid priorities.')
 
 
 class SourcePackage(_Package):
@@ -262,7 +290,7 @@ class SourcePackage(_Package):
 
         # Many properties are easier to pass through straight to the protobuf
         # for now. Later we may define properties for them instead.
-        self.uploader = self._pb.uploader
+        self.uploaders = self._pb.uploaders
 
         self.build_depends = self._pb.build_depends
         self.build_depends_indep = self._pb.build_depends_indep
@@ -278,7 +306,69 @@ class SourcePackage(_Package):
 
         self.original_tarball = self._pb.original_tarball
 
+    # 'Source' is a simple string field, but maps to 'name'.
+    _SIMPLE_STRING_FIELDS = {'Section', 'Homepage', 'Vcs-Browser'}
+
     vcs_browser = _GenericProperty('vcs_browser')
+
+    def _parse_control_line(self, control_line):
+        """Imports a line from a control file.
+
+        Args:
+            control_line: A string containing a line from a control file.
+        """
+        key, value = control_line.split(':', 1)
+        value = value.strip()
+        if key == 'Source':
+            self.name = value
+            return
+        if key in self._SIMPLE_STRING_FIELDS:
+            setattr(self._pb, key.lower().replace('-', '_'), value)
+            return
+        if key == 'Priority':
+            self.priority = self.parse_priority(value)
+            return
+        if key == 'Maintainer':
+            person.parse_person(self.maintainer, value)
+            return
+        if key == 'Uploaders':
+            # TODO: Handle the fact that Uploaders can be folded.
+            uploaders = value.split(',')
+            for uploader in uploaders:
+                person.parse_person(self.uploaders.add(), uploader.strip())
+            return
+        if key == 'Standards-Version':
+            # TODO: Parse standards versions
+            return
+        if key.startswith('Build-'):
+            # TODO: Import build depends (indep), build conflicts (indep)
+            return
+        if key.startswith('Vcs-'):
+            # TODO: Handle version control fields
+            return
+        field = self._pb.additional_fields.add()
+        field.key = key
+        field.value = value
+
+    def import_control_file(self, control_file):
+        """Imports a control file from a Debian source package.
+
+        Args:
+            control_file: A readable unicode file object containing the
+                control file.
+        """
+        while True:
+            line = control_file.readline()
+            if not line:
+                return
+            if line.isspace():
+                break  # The first paragraph break ends the source package.
+            if ':' in line:
+                self._parse_control_line(line)
+            else:
+                raise ValueError('Line does not contain field and value:',
+                                 line)
+        # TODO: Handle binary packages.
 
     def import_changelog_file(self, changelog):
         """Imports the changelog from a file. Extends current changelog.
@@ -298,7 +388,6 @@ class SourcePackage(_Package):
         Args:
             changelog: A readable unicode file object containing the changelog.
         """
-        changelog.seek(0)
         changes = []
         while True:
             change = pb.Change()
@@ -317,7 +406,8 @@ class SourcePackage(_Package):
             for keyword_value in keyword_values:
                 key_value = keyword_value.strip().split('=')
                 if key_value[0] == 'urgency':
-                    change.urgency, commentary = get_urgency_from_string(
+                    (change.urgency,
+                     commentary) = Changelog.get_urgency_from_string(
                         key_value[1])
                     if commentary:
                         change.urgency_commentary = commentary
@@ -331,12 +421,9 @@ class SourcePackage(_Package):
             while not entries[-1]:
                 del entries[-1]
             change.entries.extend(entries)
-            # TODO: Find an existing Person if it exists; otherwise create one.
-            email_start = changelog_line.find('<')
-            email_end = changelog_line.find('>')
-            change.maintainer.name = changelog_line[4:email_start-1]
-            change.maintainer.email = changelog_line[email_start+1:email_end]
-            timestamp = dateutil.parser.parse(changelog_line[email_end+3:])
+            person.parse_person(change.maintainer, changelog_line[3:])
+            timestamp = dateutil.parser.parse(
+                changelog_line[changelog_line.find('>')+3:])
             change.timestamp = calendar.timegm(timestamp.utctimetuple())
             change.timezone = int(timestamp.tzinfo.utcoffset(
                 timestamp.tzinfo).total_seconds()/60)
@@ -366,9 +453,10 @@ class SourcePackage(_Package):
                 yield u'  %s' % entry if entry else u''
             yield u''
             yield (u' -- {maintainer.name} <{maintainer.email}>  {timestamp}'
-                   ).format(maintainer=change.maintainer,
-                            timestamp=get_time_string(change.timestamp,
-                                                      change.timezone))
+                   ).format(
+                       maintainer=change.maintainer,
+                       timestamp=Changelog.get_time_string(change.timestamp,
+                                                           change.timezone))
             yield u''
 
     def export_changelog_file(self, output_file):
