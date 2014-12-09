@@ -6,6 +6,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import codecs
+import mock
 
 from debalot.lib import debian_package_pb2
 
@@ -100,3 +101,19 @@ class SourcePackage():
                      encoding='utf-8-sig') as changelog:
         OUTPUT_CHANGELOG = changelog.read().splitlines()
     OUTPUT_CHANGELOG.append(u'')
+
+VALID_SOURCE_PACKAGE = mock.Mock()
+VALID_SOURCE_PACKAGE.name = 'hello-debhelper'
+VALID_SOURCE_PACKAGE.section = 'oldlibs'
+VALID_SOURCE_PACKAGE.priority = 4
+VALID_SOURCE_PACKAGE.maintainer.name = 'Santiago Vila'
+VALID_SOURCE_PACKAGE.maintainer.email = 'sanvila@debian.org'
+VALID_SOURCE_PACKAGE.standards_version.major_version = 3
+VALID_SOURCE_PACKAGE.standards_version.minor_version = 9
+VALID_SOURCE_PACKAGE.standards_version.major_patch = 5
+VALID_SOURCE_PACKAGE.standards_version.minor_patch = 1
+DEPEND_DEBHELPER = mock.Mock()
+DEPEND_DEBHELPER.name = 'debhelper'
+DEPEND_DEBHELPER.version = '9'
+DEPEND_DEBHELPER.relationship = 3  # Later or equal
+VALID_SOURCE_PACKAGE.build_depends = [DEPEND_DEBHELPER]

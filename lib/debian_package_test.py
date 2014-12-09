@@ -19,6 +19,56 @@ from debalot.lib import debian_package
 from debalot.lib import debian_package_pb2
 
 
+class DebianPackageTestCase(unittest.TestCase):
+    """A test case for Debian packages. Contains extra equality methods."""
+
+    def __init__(self, *args, **kwargs):
+        super(DebianPackageTestCase, self).__init__(*args, **kwargs)
+        self.addTypeEqualityFunc(
+            debian_package_pb2.Change, self.assert_changes_equal)
+        self.addTypeEqualityFunc(
+            debian_package_pb2.Relation, self.assert_relations_equal)
+
+
+    def assert_relations_equal(self, expected, actual, msg=None):
+        """Check equality between two Relation fields in debian_package_pb2.
+
+        Args:
+            expected: Expected Relation field.
+            actual: Actual Relation field created by test.
+            msg: Message to include in failureException.
+        """
+        self.assertEqual(expected.HasField('name'), actual.HasField('name'))
+        self.assertEqual(expected.HasField('version'),
+                         actual.HasField('version'))
+        self.assertEqual(expected.HasField('relationship'),
+                         actual.HasField('relationship'))
+        self.assertEqual(expected.name, actual.name)
+        self.assertEqual(expected.version, actual.version)
+        self.assertEqual(expected.relationship, actual.relationship)
+
+    def assert_changes_equal(self, expected, actual, msg=None):
+        """Check equality between two Relation fields in debian_package_pb2.
+
+        Args:
+            expected: Expected Relation field.
+            actual: Actual Relation field created by test.
+            msg: Message to include in failureException.
+        """
+        self.assertEqual(expected.name, actual.name, msg=None)
+        self.assertEqual(expected.version, actual.version, msg=None)
+        self.assertEqual(expected.distributions, actual.distributions,
+                         msg=None)
+        self.assertEqual(expected.urgency, actual.urgency, msg=None)
+        self.assertEqual(expected.entries, actual.entries, msg=None)
+        self.assertEqual(expected.timestamp, actual.timestamp, msg=None)
+        self.assertEqual(expected.timezone, actual.timezone, msg=None)
+        self.assertEqual(expected.maintainer.name,
+                         actual.maintainer.name, msg=None)
+        self.assertEqual(expected.maintainer.email,
+                         actual.maintainer.email, msg=None)
+
+
 class TestGenericProperties(unittest.TestCase):
     def setUp(self):
         self.object = mock.Mock()
@@ -205,7 +255,7 @@ class TestPackageClassFunctions(unittest.TestCase):
             debian_package._Package.parse_priority({})
 
 
-class TestSourcePackageControlImport(unittest.TestCase):
+class TestSourcePackageControlImport(DebianPackageTestCase):
     def setUp(self):
         self.source_package = debian_package.SourcePackage()
 
@@ -250,13 +300,39 @@ class TestSourcePackageControlImport(unittest.TestCase):
                          self.source_package.uploaders[1].email)
 
     def test_parse_standards_version(self):
+        for field in {'major_version', 'minor_version',
+                      'major_patch', 'minor_patch'}:
+            self.source_package.standards_version.ClearField(field)
+            self.assertFalse(
+                self.source_package.standards_version.HasField(field))
         self.source_package._parse_control_line('Standards-Version: 3.9.5\n')
-        # TODO: Figure out how to parse standards versions.
+        for field in {'major_version', 'minor_version', 'major_patch'}:
+            self.assertTrue(
+                self.source_package.standards_version.HasField(field))
+        self.assertFalse(
+            self.source_package.standards_version.HasField('minor_patch'))
+        self.assertEqual(3,
+                         self.source_package.standards_version.major_version)
+        self.assertEqual(9,
+                         self.source_package.standards_version.minor_version)
+        self.assertEqual(5,
+                         self.source_package.standards_version.major_patch)
 
     def test_parse_build_depends_etc(self):
+        self.source_package._pb.ClearField('build_depends')
+        self.assertFalse(self.source_package.build_depends)
+        expected = debian_package_pb2.Relation()
+        expected.name = 'debhelper'
+        expected.version = '9'
+        expected.relationship = debian_package_pb2.Relation.LATER_OR_EQUAL
         self.source_package._parse_control_line(
             'Build-Depends: debhelper (>= 9)\n')
-        # TODO: Parse Build Depends and the like.
+        self.assertEqual(expected, self.source_package.build_depends[0])
+        self.source_package._pb.ClearField('build_depends')
+        self.assertFalse(self.source_package._pb.build_depends)
+        self.source_package._parse_control_line(
+            'Build-Depends: gcc, python (= 2.7), golang (>= 1.9.9)\n')
+        # TODO:This test needs fleshing out.
 
     def test_parse_vcs_fields(self):
         self.source_package._parse_control_line(
@@ -276,37 +352,57 @@ class TestSourcePackageControlImport(unittest.TestCase):
             self.assertEqual(generic_fields[field.key], field.value)
 
     def test_import_control_file_valid_file(self):
-        # TODO: Create this test.
-        pass
+        self.source_package._pb = debian_package_pb2.SourcePackage()
+        with codecs.open(os.path.join(os.path.dirname(__file__),
+                                      'test_files/control'),
+                         encoding='utf-8-sig') as control_file:
+            self.source_package.import_control_file(control_file)
+        self.assertEqual(test_data.VALID_SOURCE_PACKAGE.name,
+                         self.source_package.name)
+        self.assertEqual(test_data.VALID_SOURCE_PACKAGE.section,
+                         self.source_package.section)
+        self.assertEqual(test_data.VALID_SOURCE_PACKAGE.priority,
+                         self.source_package.priority)
+        self.assertEqual(test_data.VALID_SOURCE_PACKAGE.maintainer.name,
+                         self.source_package.maintainer.name)
+        self.assertEqual(test_data.VALID_SOURCE_PACKAGE.maintainer.email,
+                         self.source_package.maintainer.email)
+        self.assertEqual(
+            test_data.VALID_SOURCE_PACKAGE.standards_version.major_version,
+            self.source_package.standards_version.major_version)
+        self.assertEqual(
+            test_data.VALID_SOURCE_PACKAGE.standards_version.minor_version,
+            self.source_package.standards_version.minor_version)
+        self.assertEqual(
+            test_data.VALID_SOURCE_PACKAGE.standards_version.major_patch,
+            self.source_package.standards_version.major_patch)
+        self.assertEqual(
+            test_data.VALID_SOURCE_PACKAGE.standards_version.minor_patch,
+            self.source_package.standards_version.minor_patch)
+        self.assertEqual(len(test_data.VALID_SOURCE_PACKAGE.build_depends),
+                         len(self.source_package.build_depends))
+        self.assertEqual(
+            test_data.VALID_SOURCE_PACKAGE.build_depends[0].name,
+            self.source_package.build_depends[0].name)
+        self.assertEqual(
+            test_data.VALID_SOURCE_PACKAGE.build_depends[0].version,
+            self.source_package.build_depends[0].version)
+        self.assertEqual(
+            test_data.VALID_SOURCE_PACKAGE.build_depends[0].relationship,
+            self.source_package.build_depends[0].relationship)
 
     def test_import_control_file_invalid_file(self):
         # TODO: Create this test
         pass
 
 
-class TestSourcePackageChangelog(unittest.TestCase):
+class TestSourcePackageChangelog(DebianPackageTestCase):
     def setUp(self):
         self.changelog_source_filename = os.path.join(
             os.path.dirname(__file__), 'test_files/test_changelog')
         self.source_package = debian_package.SourcePackage()
         self.data_package = debian_package.SourcePackage(
             protobuf=test_data.SourcePackage.SOURCE_PACKAGE)
-        self.addTypeEqualityFunc(debian_package_pb2.Change,
-                                 self.assert_changes_equal)
-
-    def assert_changes_equal(self, expected, actual, msg=None):
-        self.assertEqual(expected.name, actual.name, msg=None)
-        self.assertEqual(expected.version, actual.version, msg=None)
-        self.assertEqual(expected.distributions, actual.distributions,
-                         msg=None)
-        self.assertEqual(expected.urgency, actual.urgency, msg=None)
-        self.assertEqual(expected.entries, actual.entries, msg=None)
-        self.assertEqual(expected.timestamp, actual.timestamp, msg=None)
-        self.assertEqual(expected.timezone, actual.timezone, msg=None)
-        self.assertEqual(expected.maintainer.name,
-                         actual.maintainer.name, msg=None)
-        self.assertEqual(expected.maintainer.email,
-                         actual.maintainer.email, msg=None)
 
     def assert_changelogs_equal(self, expected, actual, msg=None):
         self.assertEqual(len(expected), len(actual), msg=None)

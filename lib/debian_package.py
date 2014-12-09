@@ -193,7 +193,7 @@ class Relation:
             'Relationship must be one of the defined relationship values from '
             'the Debian Policy Manual. ')
         if isinstance(relationship, (str, unicode)):
-            relationship = unicode(relationship.lower())
+            relationship = unicode(relationship.lower().strip())
             for rel_type in cls._RELATIONSHIP_STRINGS:
                 if relationship in cls._RELATIONSHIP_STRINGS[rel_type]:
                     return getattr(pb.Relation, rel_type)
@@ -338,10 +338,30 @@ class SourcePackage(_Package):
                 person.parse_person(self.uploaders.add(), uploader.strip())
             return
         if key == 'Standards-Version':
-            # TODO: Parse standards versions
+            sections = value.split('.')
+            self.standards_version.major_version = int(sections[0])
+            self.standards_version.minor_version = int(sections[1])
+            if len(sections) >= 3:
+                self.standards_version.major_patch = int(sections[2])
+            if len(sections) >= 4:
+                self.standards_version.minor_patch = int(sections[3])
             return
-        if key.startswith('Build-'):
-            # TODO: Import build depends (indep), build conflicts (indep)
+        if key in {'Build-Depends', 'Build-Depends-Indep', 'Build-Conflicts',
+                   'Build-Conflicts-Indep'}:
+            packages = value.split(',')
+            for package in packages:
+                build_field = getattr(
+                    self, key.lower().replace('-', '_')).add()
+                parenthetical_start = package.find('(')
+                if parenthetical_start == -1:
+                    build_field.name = package.strip()
+                    continue
+                build_field.name = package[:parenthetical_start].strip()
+                parenthetical = package[parenthetical_start+1:].strip(
+                    string.whitespace + ')').split()
+                build_field.relationship = Relation.parse_relationship(
+                    parenthetical[0])
+                build_field.version = parenthetical[1]
             return
         if key.startswith('Vcs-'):
             # TODO: Handle version control fields
